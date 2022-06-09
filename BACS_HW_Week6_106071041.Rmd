@@ -1,0 +1,229 @@
+---
+title: "BACS_HW_Week6"
+author: '106071041'
+date: "2021/4/5"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Question 1
+## a.Visualize Verizon’s response times for ILEC vs. CLEC customers
+```{r}
+Verizon_response <- read.csv("verizon.csv")
+```
+```{r}
+Time <- Verizon_response$Time
+Group <- Verizon_response$Group
+```
+```{r}
+is_ILEC <- Group == "ILEC"
+is_CLEC <- Group == "CLEC"
+```
+
+```{r}
+response_times_ILEC <- Time[is_ILEC]
+response_times_CLEC <- Time[is_CLEC]
+```
+```{r}
+plot(density(response_times_ILEC))
+abline(v=mean(response_times_ILEC),col = "lightgray")
+```
+```{r}
+plot(density(response_times_CLEC))
+abline(v=mean(response_times_CLEC),col = "lightgray")
+```
+
+## b. t.test()
+```{r}
+t.test(response_times_ILEC, response_times_CLEC, alternative = "l", conf.level = 0.99)
+```
+
+### i. null and alternative
+let a = the mean of response_time_ILEC  
+    b = the mean of response_time_CLEC  
+then a-b = the difference in means  
+
+Null: a-b = 0  
+Alternative: a-b < 0 (ignore a-b > 0 since it's impossible considering the company's preference)     
+
+### ii. reject or not (1% significance level)
+not reject null hypothesis (-1.98 > -2.32)
+```{r}
+quants_99_1sided <- qt(c(0.01), length(response_times_ILEC)-1)
+```
+```{r}
+quants_99_1sided
+```
+
+```{r}
+t.test(response_times_ILEC, response_times_CLEC, alternative = "l", conf.level = 0.99)
+```
+
+## c. use t.test() to compare alt t-values and null t-values
+
+### i. plot
+```{r}
+bootstrap_null_alt <- function(){
+  resample_ILEC <- sample(response_times_ILEC, replace = TRUE)
+  resample_CLEC <- sample(response_times_CLEC, replace = TRUE)
+  
+  t_stat_alt <- t.test(resample_ILEC, resample_CLEC,"l", conf.level = 0.99)
+  t_stat_null <- t.test(resample_ILEC, response_times_CLEC,"l", conf.level = 0.99)
+  
+  c(t_stat_alt$statistic, t_stat_null$statistic)
+}
+```
+
+
+```{r}
+set.seed(723482943)
+boot_t_alt <- replicate(2000, bootstrap_null_alt()[1])
+boot_t_null <- replicate(2000, bootstrap_null_alt()[2])
+```
+```{r}
+quants_95_1sided <- qt(c(0.05), length(response_times_ILEC)-1)
+quants_95_1sided
+```
+
+```{r}
+plot(density(boot_t_alt))
+abline(v=quants_95_1sided, col = "red")
+```
+
+```{r}
+plot(density(boot_t_null))
+abline(v=quants_95_1sided, col = "red")
+```
+
+### ii. should we reject?
+looks like we should reject  
+
+
+
+
+# Question 2
+
+## a. null & alternative
+let  
+c = the variance of response_time_ILEC  
+d = the variance of response_time_CLEC  
+then c-d = the difference in variences  
+
+Null: c-d = 0  
+Alternative: c-d is not equal to 0  
+
+## b. F-statistic
+
+### i. F-statistic
+```{r}
+var_ILEC <- var(response_times_ILEC)
+var_CLEC <- var(response_times_CLEC)
+smaller_var <- ifelse(min(var_ILEC, var_CLEC) == var_CLEC, "var_CLEC", "var_ILEC")
+smaller_var
+```
+
+```{r}
+F_statistic <- var_CLEC/var_ILEC
+F_statistic
+```
+```{r}
+var.test(response_times_CLEC, response_times_ILEC, ratio = 1, "g")
+```
+
+### ii. cut-off value of F-statistic
+```{r}
+qf(p=0.95, df1 = length(response_times_CLEC), df2 = length(response_times_ILEC))
+```
+
+### iii. can we reject?
+Yes, reject it!!!   
+
+## c. bootstrapping
+
+### i. bootstrapped F-statistics for both null and alternative hypothesis
+```{r}
+set.seed(23423424)
+sd_providers_test <- function(larger_sd_sample, smaller_sd_sample){
+  resample_larger_sd <- sample(larger_sd_sample, replace = TRUE)
+  resample_smaller_sd <- sample(smaller_sd_sample, replace = TRUE)
+  f_alt <- var(resample_larger_sd) / var(resample_smaller_sd)
+  f_null <- var(resample_larger_sd) / var(larger_sd_sample)
+  c(f_alt, f_null)
+}
+```
+```{r}
+boot_f_stats <- replicate(10000, sd_providers_test(response_times_CLEC, response_times_ILEC))
+# bootstrapped null hypothesis
+f_alts <- boot_f_stats[1,]
+# bootstrapped alternative hypothesis
+f_nulls <- boot_f_stats[2,]
+```
+
+### ii. 95% cutoff value of null F-statistics 
+```{r}
+cutoff_Fstatistics <- qf(p=0.95, df1 = length(response_times_CLEC), df2 = length(response_times_CLEC))
+cutoff_Fstatistics
+```
+### iii. visualizaiton of bootstrapped null and alternative F-statistics and draw the cutoff value vertical line
+```{r}
+# bootstrapped null F-statistics
+plot(density(f_nulls),)
+abline(v=cutoff_Fstatistics, col = "red")
+```
+```{r}
+# bootstrapped alternative F-statistics
+plot(density(f_alts))
+abline(v=cutoff_Fstatistics, col = "red")
+```
+
+### iv. what do the bootstrap results suggest about the *null* hyp?
+ILEC and CLEC have the same variances  
+
+# Question 3
+
+## a. Create a function to see if key statistics/assumptions of normality are met in our distributions
+```{r}
+norm_qq_plot <- function(values){
+  # i. Create a sequence of probability numbers from 0 to 1, with ~1000 probabilities in between
+  probs1000 <- seq(0, 1, 0.001)
+  # ii. Calculate ~1000 quantiles of our values (you can use probs=probs1000)
+  q_vals <- quantile(values, probs = probs1000)
+  # iii. Calculate ~1000 quantiles of a perfectly normal distribution with the same mean and standard deviation as our values
+  q_norm <- qnorm(probs1000, mean = mean(values), sd = sd(values))
+  # iv. Create a scatterplot comparing the quantiles of a normal distribution versus quantiles of values
+  plot(q_norm, q_vals, xlab="normal quantiles", ylab="values quantiles")
+  # v. Finally, draw a red line with intercept of 0 and slope of 1, comparing these two sets of quantiles
+  abline(0, 1, col="red", lwd=2)
+}
+```
+
+## b. Test the function by d123
+a Q-Q plot is trying to answer the question: “How similar are the quantiles in my dataset compared to what the quantiles of my dataset would be if my dataset followed a theoretical probability distribution?”  
+```{r}
+set.seed(32423)
+d1 <- rnorm(n=500, mean=15, sd=5)
+d2 <- rnorm(n=200, mean=30, sd=5)
+d3 <- rnorm(n=100, mean=45, sd=5)
+d123 <- c(d1, d2, d3)
+
+plot(density(d123))
+norm_qq_plot(d123)
+```
+
+## c. Check the bootstrapped distribution of null t-values was normally distributed
+Yes, it was normally distributed  
+```{r}
+norm_qq_plot(boot_t_null)
+```
+
+## d. Check the two samples in Q2 were normally distributed
+It seems that they are not.  
+```{r}
+norm_qq_plot(response_times_ILEC)
+```
+````{r}
+norm_qq_plot(response_times_CLEC)
+```
+
+
+

@@ -1,0 +1,184 @@
+---
+title: "BACS_HW_Week5"
+author: '106071041'
+date: "2021/3/27"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Question 1) DOI App
+
+## a. Given the critical DOI score that Google uses to detect malicious apps (-3.7), what is the probability that a randomly chosen app from Google’s app store will turn off the Verify security feature? (report a precise decimal fraction, not a percentage)
+```{r}
+DOI_decimal <- pnorm(-3.7)
+```
+```{r}
+DOI_decimal
+```
+
+## b. Assuming there were ~2.2 million apps when the article was written, what number of apps on the Play Store did Google expect would maliciously turn off the Verify feature once installed?
+```{r}
+2.2 * (10**6) * DOI_decimal
+```
+
+# Question 2) Verizon's repair time
+
+## a. The Null distribution of t-values:
+
+### (i) Visualize the distribution of Verizon’s repair times, marking the mean with a vertical line
+```{r}
+data <- read.csv("verizon.csv", header = T)
+```
+```{r}
+verizon_dis <- plot(density(data$Time))
+mean(data$Time)
+abline(v=mean(data$Time),col="red")
+```
+
+### (ii) Given what PUC wishes to test, how would you write the hypothesis? (not graded)
+Null Hypothesis: population mean <= Verizon's claim (7.6)  
+Alternative Hypothesis: population mean > Verizon's claim  
+
+### (iii) Estimate the population mean, and the 99% confidence interval (CI) of this estimate
+```{r}
+# estimated population mean
+mean(data$Time)
+```
+```{r}
+# 99%CI
+quantile(data$Time, c(0.005, 0.995))
+```
+
+### (iv) Using the traditional statistical testing methods we saw in class,. find the t-statistic and p-value of the test
+```{r}
+length(data$Time)
+```
+
+```{r}
+# standard error of the mean
+std_error <- sd(data$Time)/sqrt(length(data$Time))
+```
+```{r}
+std_error
+```
+
+```{r}
+# t score
+t_score <- (mean(data$Time)-7.6)/std_error
+```
+```{r}
+t_score
+```
+```{r}
+# p-value
+1 - pt(t_score, df=length(data$Time)-1)
+```
+### (v) Briefly describe how these values relate to the Null distribution of t (not graded)
+In right-tailed test with 99% confidence, if p-value less than 0.01, we will reject the hypothesis.    
+
+
+### (vi) What is your conclusion about the advertising claim from this t-statistic, and why?
+PUC can believe Verizon's claim.  
+Since p-value is obviously larger than 0.01, that means 7.6 is in 99%CI so we accept the null hypothesis.    
+
+## b. Let’s use bootstrapping on the sample data to examine this problem:
+```{r}
+# Verizon's Claim
+Verizon_hyp <- 7.6
+```
+```{r}
+# PUC validation sample
+set.seed(72342)
+PUC_sample <- sample(data$Time, 200)
+PUC_mean <- mean(PUC_sample)
+PUC_sd <- sd(PUC_sample)
+```
+```{r}
+PUC_sample
+```
+
+### (i) Bootstrapped Percentile: Estimate the bootstrapped 99% CI of the mean
+```{r}
+# bootstrapping samples just like PUC did for 2000 times
+boot_samples <- replicate(2000, sample(data$Time, 200)) 
+```
+```{r}
+# For all 2000 samples, we find out their means
+boot_means <- apply(boot_samples, 2, mean)
+```
+```{r}
+quantile(boot_means, c(0.005, 0.995))
+```
+
+### (ii) Bootstrapped Difference of Means
+```{r}
+boot_mean_diffs <- function(sample0, mean_hyp){
+  resample <- sample(sample0, length(sample0), replace=T)
+  return(mean(resample) - mean_hyp )
+}
+```
+```{r}
+set.seed(432342327)
+num_boots <- 2000
+mean_diffs <- replicate(num_boots, boot_mean_diffs(PUC_sample, Verizon_hyp))
+```
+```{r}
+diff_ci_99 <- quantile(mean_diffs, probs=c(0.005, 0.995))
+```
+```{r}
+diff_ci_99
+```
+### (iii) Bootstrapped t-Interval: 
+What is 99% CI of the bootstrapped t-statistic?
+```{r}
+boot_t_stat <- function(sample0, mean_hyp){
+  resample <- sample(sample0, replace=T)
+  diff <- mean(resample) - mean_hyp
+  se <- sd(resample)/sqrt(length(resample))
+  return(diff/se)
+}
+```
+```{r}
+set.seed(23123)
+num_boots <- 2000
+t_boots <- replicate(num_boots, boot_t_stat(PUC_sample, Verizon_hyp))
+```
+```{r}
+quantile(t_boots, c(0.005, 0.995))
+```
+### (iv) Plot separate distributions of all three bootstraps above
+(for ii and iii make sure to include zero on the x-axis)  
+```{r}
+# for (i) means
+plot(density(boot_means))
+abline(v=mean(boot_means), col="red")
+abline(v=quantile(boot_means, 0.995), lty="dashed")
+
+# sample0
+abline(v=mean(data$Time), col="blue")
+```
+```{r}
+# for (ii) the difference of means
+plot(density(mean_diffs))
+abline(v=mean(mean_diffs), col="red")
+abline(v=quantile(mean_diffs, 0.995), lty="dashed")
+
+# sample0
+abline(v=t_score, col="blue")
+```
+```{r}
+# for (iii) t-intervals
+plot(density(t_boots))
+abline(v=mean(t_boots), col="red")
+abline(v=quantile(t_boots, 0.995), lty="dashed")
+
+# sample0
+abline(v=t_score, col="blue")
+```
+
+## c. Do the four methods (traditional test, bootstrapped percentile, bootstrapped difference of means, bootstrapped t-Interval) agree with each other on the test?
+They all agree with each other.   
